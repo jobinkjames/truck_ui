@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tanker Detail</title>
+
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    body { margin: 0; padding: 0; background: #f8fafc; }
+    .page-header { padding: 15px 20px; border-bottom: 1px solid #eee; }
+    .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 20px; background: white; border-bottom: 1px solid #eee; }
+    .filter-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid #ddd; background: white; cursor: pointer; }
+    .filter-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+  </style>
+</head>
+<body>
+
+  <div id="tanker-detail-page">
+
+    <!-- Content will be injected by JavaScript -->
+
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let currentTankerId = null;
+    let currentFilter = "All";
+    let tankerMap = null;
+
+    // Main function called from parent window
+    window.openTankerDetail = function(tankerId, tankerData) {
+      currentTankerId = tankerId;
+      currentTankerData = tankerData;
+      renderTankerDetail();
+    };
+
+    let currentTankerData = null;
+
+    function renderTankerDetail() {
+      const container = document.getElementById("tanker-detail-page");
+      if (!container || !currentTankerData) return;
+
+      const comps = currentTankerData.compartments || {};
+      const compKeys = Object.keys(comps).sort();
+
+      let filterHTML = `<button class="filter-btn ${currentFilter === "All" ? "active" : ""}" onclick="setFilter('All')">All</button>`;
+      let cardsHTML = "";
+      let timelineHTML = "";
+
+      compKeys.forEach(compId => {
+        const comp = comps[compId];
+        if (!comp) return;
+
+        const lockId = comp.lockId;
+        const status = window.lockStatusMap?.[lockId] || comp.status || "LOCKED";
+        const destination = comp.destination?.name || comp.destination || "No Destination";
+
+        const liveGps = comp.liveGps || {};
+        const lockedGps = comp.route?.lockedLocation || {};
+        const lat = liveGps.latitude || lockedGps.latitude || 0;
+        const lng = liveGps.longitude || lockedGps.longitude || 0;
+        const hasGps = lat && lng;
+
+        // Filter for cards
+        if (currentFilter === "All" || currentFilter === compId) {
+          cardsHTML += createCompCard(compId, comp, status, destination, lat, lng, hasGps, currentTankerId);
+        }
+
+        // Timeline (shows all)
+        timelineHTML += createTimelineItem(compId, status, destination, lat, lng, hasGps);
+      });
+
+      container.innerHTML = `
+        <div class="page-header">
+          <button class="vd-btn vd-btn-sm" onclick="parent.closeTankerDetailPage()">
+            <i class="fas fa-arrow-left"></i> Back
+          </button>
+          <h3 style="margin:0 0 0 15px;">${currentTankerId} — Detail</h3>
+          <div class="live-pill" style="margin-left:auto;">
+            <span class="live-dot"></span> LIVE
+          </div>
+        </div>
+
+        <div class="filter-bar">${filterHTML}</div>
+
+        <!-- Lock Dashboard -->
+        <div class="panel">
+          <div class="panel-header"><h6><i class="fas fa-lock"></i> Lock Dashboard</h6></div>
+          <div class="panel-body"><div class="comp-grid">${cardsHTML || '<p>No compartments</p>'}</div></div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="panel">
+          <div class="panel-header"><h6><i class="fas fa-route"></i> Delivery Timeline</h6></div>
+          <div class="panel-body"><div class="timeline-wrap">${timelineHTML}</div></div>
+        </div>
+
+        <!-- Map -->
+        <div class="panel">
+          <div class="panel-header"><h6><i class="fas fa-map-location-dot"></i> Live GPS Map</h6></div>
+          <div class="panel-body p-0">
+            <div id="tankerLiveMap" style="height:420px; border-radius:12px;"></div>
+          </div>
+        </div>
+      `;
+
+      setTimeout(() => renderMap(), 300);
+    }
+
+    function createCompCard(compId, comp, status, destination, lat, lng, hasGps, tankerId) {
+      const lockId = comp.lockId;
+      return `
+        <div class="comp-card ${status === "UNLOCKED" ? "unlocked" : "locked"}">
+          <div class="comp-header">
+            <span class="comp-title">Comp ${compId}</span>
+            <span class="comp-status ${status.toLowerCase()}">${status}</span>
+          </div>
+          <div class="comp-row"><span class="label">Lock ID</span><span class="value">${lockId || "—"}</span></div>
+          <div class="comp-row"><span class="label">Destination</span><span class="value">${destination}</span></div>
+          <div class="comp-row">
+            <span class="label">GPS</span>
+            <span class="value">${hasGps ? `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank">${lat.toFixed(5)}, ${lng.toFixed(5)}</a>` : "No GPS"}</span>
+          </div>
+          <div class="comp-row"><span class="label">Auth Key</span><span class="value" id="key_${lockId}">...</span></div>
+          <div class="comp-row"><span class="label">Expiry</span><span class="value" id="exp_${lockId}">...</span></div>
+
+          <div class="comp-actions">
+            ${status === "UNLOCKED" ? 
+              `<button class="vd-btn vd-btn-amber vd-btn-sm flex-1" onclick="parent.manualLock('${tankerId}','${compId}','${lockId}')">Lock</button>` : 
+              `<button class="vd-btn vd-btn-green vd-btn-sm flex-1" onclick="parent.manualUnlock('${tankerId}','${compId}','${lockId}')">Unlock</button>`}
+            <button class="vd-btn vd-btn-cyan vd-btn-sm flex-1" onclick="parent.generateEmergencyKey('${lockId}')">Emergency</button>
+            <button class="vd-btn vd-btn-red vd-btn-sm flex-1" onclick="parent.resetLock('${lockId}')">Reset</button>
+          </div>
+        </div>`;
+    }
+
+    function createTimelineItem(compId, status, destination, lat, lng, hasGps) {
+      return `
+        <div class="timeline-item">
+          <div class="timeline-dot ${status === "UNLOCKED" ? "unlocked" : "locked"}"></div>
+          <div class="timeline-content">
+            <div class="timeline-title">${destination}</div>
+            <div class="timeline-sub">Comp ${compId} — <span class="status-${status.toLowerCase()}">${status}</span></div>
+            ${hasGps ? `<div class="timeline-gps"><i class="fas fa-location-dot"></i> <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank">${lat.toFixed(5)}, ${lng.toFixed(5)}</a></div>` : ''}
+          </div>
+        </div>`;
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      renderTankerDetail();
+    }
+
+    function renderMap() {
+      // Your existing map rendering logic here
+      console.log("Map rendered for tanker:", currentTankerId);
+      // Paste your renderTankerMap logic if needed
+    }
+
+    // Load auth keys from parent
+    window.loadLockExtra = function(lockId) {
+      parent.loadLockExtra(lockId);
+    };
+  </script>
+</body>
+</html>

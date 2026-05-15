@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VaultDrive — Fleet Security</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    /* ── Tanker list pills ── */
+    .tanker-status-pill { font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:.4px;text-transform:uppercase; }
+    .tanker-status-pill.active  { background:rgba(34,197,94,.15);color:#22c55e; }
+    .tanker-status-pill.idle    { background:rgba(90,160,240,.12);color:#5aa0f0; }
+    .tanker-status-pill.transit { background:rgba(245,158,11,.15);color:#f59e0b; }
+
+    .tanker-item { display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s; }
+    .tanker-item:hover   { background:rgba(255,255,255,.04); }
+    .tanker-item.selected{ background:rgba(90,160,240,.08);border-left:3px solid #5aa0f0; }
+    .tanker-item strong  { font-size:13px;display:block; }
+    .tanker-item small   { font-size:11px;color:var(--text-muted);display:block;margin-top:1px; }
+
+    @keyframes slideInRight { from{opacity:0;transform:translateX(18px)} to{opacity:1;transform:translateX(0)} }
+    #tanker-detail-page { animation:slideInRight .25s ease; }
+
+    /* ══════════════════════════════════════════
+       FLEET MANAGEMENT — TABS
+    ══════════════════════════════════════════ */
+    .mgmt-tab-bar {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--surface, #1a2232);
+      border: 1px solid var(--border, rgba(255,255,255,.08));
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+
+    .mgmt-tab {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted, #6b7fa3);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      cursor: pointer;
+      transition: all .18s ease;
+      white-space: nowrap;
+    }
+    .mgmt-tab i { font-size: 13px; }
+    .mgmt-tab:hover { color: var(--text-primary, #e2e8f0); background: rgba(255,255,255,.04); }
+    .mgmt-tab.active {
+      background: var(--accent-blue, #3b82f6);
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(59,130,246,.35);
+    }
+
+    /* Tab panes */
+    .mgmt-pane { display: none; animation: mgmtFadeIn .2s ease; }
+    .mgmt-pane.active { display: block; }
+    @keyframes mgmtFadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+    /* Full-width panel body layout */
+    .mgmt-full-panel {
+      background: var(--surface, #1a2232);
+      border: 1px solid var(--border, rgba(255,255,255,.08));
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .mgmt-full-panel .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border, rgba(255,255,255,.08));
+    }
+    .mgmt-full-panel .panel-header h5 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -.2px;
+    }
+    .mgmt-full-panel .panel-header .panel-icon {
+      width: 32px;height: 32px;border-radius: 8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;
+    }
+    .panel-icon.blue   { background:rgba(59,130,246,.15); color:#3b82f6; }
+    .panel-icon.amber  { background:rgba(245,158,11,.15);  color:#f59e0b; }
+    .panel-icon.green  { background:rgba(34,197,94,.15);   color:#22c55e; }
+    .panel-icon.purple { background:rgba(168,85,247,.15);  color:#a855f7; }
+
+    .mgmt-full-body {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      min-height: 520px;
+    }
+    @media(max-width:820px){ .mgmt-full-body { grid-template-columns:1fr; } }
+
+    .mgmt-form-col {
+      padding: 24px 20px;
+      border-right: 1px solid var(--border, rgba(255,255,255,.08));
+    }
+    @media(max-width:820px){ .mgmt-form-col { border-right:none;border-bottom:1px solid var(--border); } }
+
+    .mgmt-preview-col {
+      padding: 24px 20px;
+      background: rgba(0,0,0,.12);
+    }
+
+    .mgmt-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: var(--text-muted, #6b7fa3);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Map pane specific */
+    #destinationMap {
+      height: 340px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border, rgba(255,255,255,.08));
+      margin-bottom: 12px;
+    }
+
+    /* Fleet overview tab */
+    .mgmt-overview-body { padding: 20px; }
+  </style>
+</head>
+<body>
+
+<!-- ================= AUTH ================= -->
+<div id="auth-panel" class="auth">
+  <div class="auth-bg-grid"></div>
+  <div class="auth-box">
+    <div class="auth-logo"><i class="fas fa-shield-halved"></i></div>
+    <h2>VaultDrive</h2>
+    <p class="auth-sub">Fleet Security Management</p>
+    <div class="auth-fields">
+      <div class="field-wrap">
+        <i class="fas fa-envelope"></i>
+        <input id="email" type="email" placeholder="Email address" autocomplete="email">
+      </div>
+      <div class="field-wrap">
+        <i class="fas fa-lock"></i>
+        <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+      </div>
+    </div>
+    <button class="btn-auth btn-primary-auth" onclick="login()">
+      <i class="fas fa-arrow-right-to-bracket"></i> Sign In
+    </button>
+    <button class="btn-auth btn-secondary-auth" onclick="register()">
+      <i class="fas fa-user-plus"></i> Create Account
+    </button>
+    <p id="msg" class="auth-msg"></p>
+  </div>
+</div>
+
+<!-- ================= DASHBOARD ================= -->
+<div id="dashboard" class="dashboard d-none">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-brand">
+      <i class="fas fa-shield-halved brand-icon"></i>
+      <span>VaultDrive</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <button onclick="nav('home')" data-page="home" class="nav-btn active">
+        <i class="fas fa-gauge-high"></i><span>Dashboard</span>
+      </button>
+      <button onclick="nav('tanker')" data-page="tanker" class="nav-btn">
+        <i class="fas fa-truck-moving"></i><span>Tanker Control</span>
+      </button>
+      <button onclick="nav('pairing')" data-page="pairing" class="nav-btn">
+        <i class="fas fa-link"></i><span>Pairing</span>
+      </button>
+      <button onclick="nav('management')" data-page="management" class="nav-btn">
+        <i class="fas fa-layer-group"></i><span>Fleet Management</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div id="user-info"></div>
+      <button onclick="logout()" class="logout-btn">
+        <i class="fas fa-right-from-bracket"></i><span>Logout</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+        <div id="page-title">Dashboard Overview</div>
+      </div>
+      <div class="topbar-right">
+        <div class="live-pill"><span class="live-dot"></span> LIVE</div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ======================== HOME ======================== -->
+      <div id="home" class="page active">
+        <div class="page-header">
+          <h3>Dashboard Overview</h3>
+          <span class="page-sub">Real-time fleet monitoring</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon icon-blue"><i class="fas fa-truck-moving"></i></div>
+            <div class="stat-info"><div class="stat-value" id="totalTankers">—</div><div class="stat-label">Total Tankers</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-green"><i class="fas fa-circle-check"></i></div>
+            <div class="stat-info"><div class="stat-value" id="tankersInUse">—</div><div class="stat-label">Tankers In Use</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-amber"><i class="fas fa-circle-pause"></i></div>
+            <div class="stat-info"><div class="stat-value" id="tankersAvailable">—</div><div class="stat-label">Available Tankers</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-purple"><i class="fas fa-lock"></i></div>
+            <div class="stat-info"><div class="stat-value" id="totalLocks">—</div><div class="stat-label">Total Locks</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-red"><i class="fas fa-lock-open"></i></div>
+            <div class="stat-info"><div class="stat-value" id="locksInUse">—</div><div class="stat-label">Locks In Use</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-cyan"><i class="fas fa-key"></i></div>
+            <div class="stat-info"><div class="stat-value" id="locksAvailable">—</div><div class="stat-label">Available Locks</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-green"><i class="fas fa-link"></i></div>
+            <div class="stat-info"><div class="stat-value" id="activePairings">—</div><div class="stat-label">Active Pairings</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-red"><i class="fas fa-triangle-exclamation"></i></div>
+            <div class="stat-info"><div class="stat-value" id="expiredKeys">—</div><div class="stat-label">Expired Keys</div></div>
+          </div>
+        </div>
+        <div class="panel mt-4">
+          <div class="panel-header"><h6><i class="fas fa-clock-rotate-left"></i> Recent Pairings</h6></div>
+          <div id="dashboardPairings" class="panel-body"></div>
+        </div>
+      </div>
+
+      <!-- ======================== TANKER CONTROL ======================== -->
+      <div id="tanker" class="page">
+        <div class="page-header">
+          <h3>Tanker Control</h3>
+          <span class="page-sub">Live tanker monitoring</span>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <h6><i class="fas fa-truck-moving"></i> Active Tankers</h6>
+          </div>
+          <div class="panel-body p-0">
+            <div id="tankerList" class="tanker-scroll-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================== PAIRING ======================== -->
+      <div id="pairing" class="page">
+        <div class="page-header">
+          <h3>Pair Locks</h3>
+          <span class="page-sub">Assign locks to tanker compartments</span>
+        </div>
+        <div class="pairing-layout">
+          <div class="pairing-left">
+            <div class="panel mb-3">
+              <div class="panel-header"><h6><i class="fas fa-plus-circle"></i> Create Pairing</h6></div>
+              <div class="panel-body">
+                <label class="field-label">Select Tanker</label>
+                <select id="tankerSelect" class="vd-select mb-3" onchange="loadTankerCompartments()">
+                  <option value="">— Select Tanker —</option>
+                </select>
+                <div id="pairMsg" class="mb-2"></div>
+                <div id="compartmentsContainer" class="comps-grid"></div>
+                <button class="vd-btn vd-btn-primary w-100 mt-3" onclick="saveAllPairings()">
+                  <i class="fas fa-save"></i> Save Pairing
+                </button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><h6><i class="fas fa-truck"></i> Paired Trucks</h6></div>
+              <div class="panel-body p-0">
+                <div id="pairedTruckList" class="paired-truck-scroll"></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel pairing-right">
+            <div class="panel-header"><h6><i class="fas fa-info-circle"></i> Truck Details</h6></div>
+            <div class="panel-body">
+              <div id="pairedTruckDetails">
+                <div class="empty-state"><i class="fas fa-truck"></i><p>Select a truck to view pairing details</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================== MANAGEMENT ======================== -->
+      <div id="management" class="page">
+
+        <div class="page-header">
+          <h3>Fleet Management</h3>
+          <span class="page-sub">Add and manage tankers, locks, and destinations</span>
+        </div>
+
+        <!-- TAB BAR -->
+        <div class="mgmt-tab-bar">
+          <button class="mgmt-tab active" onclick="switchMgmtTab('tab-tanker', this)">
+            <i class="fas fa-truck-moving"></i> Add Tanker
+          </button>
+          <button class="mgmt-tab" onclick="switchMgmtTab('tab-lock', this)">
+            <i class="fas fa-lock"></i> Add E-Lock
+          </button>
+          <button class="mgmt-tab" onclick="switchMgmtTab('tab-dest', this)">
+            <i class="fas fa-location-dot"></i> Add Destination
+          </button>
+          <button class="mgmt-tab" onclick="switchMgmtTab('tab-overview', this)">
+            <i class="fas fa-table-list"></i> Fleet Overview
+          </button>
+        </div>
+
+        <!-- ── TAB: ADD TANKER ── -->
+        <div id="tab-tanker" class="mgmt-pane active">
+          <div class="mgmt-full-panel">
+            <div class="panel-header">
+              <div class="panel-icon blue"><i class="fas fa-truck-moving"></i></div>
+              <h5>Add New Tanker</h5>
+            </div>
+            <div class="mgmt-full-body">
+
+              <!-- Form -->
+              <div class="mgmt-form-col">
+                <div class="mgmt-section-title"><i class="fas fa-pen"></i> Tanker Details</div>
+
+                <label class="field-label">Tanker ID</label>
+                <input id="newTankerId" class="vd-input mb-3" placeholder="e.g. TKR-001">
+
+                <label class="field-label">Vehicle Number</label>
+                <input id="newVehicleNumber" class="vd-input mb-3" placeholder="e.g. MH12AB1234">
+
+                <label class="field-label">Tanker Name <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <input id="newTankerName" class="vd-input mb-3" placeholder="e.g. Tanker Alpha">
+
+                <label class="field-label">Number of Compartments</label>
+                <input id="newCompartments" type="number" min="1" max="10" class="vd-input mb-4" placeholder="e.g. 4">
+
+                <button class="vd-btn vd-btn-primary w-100" onclick="addTanker()">
+                  <i class="fas fa-plus"></i> Add Tanker
+                </button>
+              </div>
+
+              <!-- Preview -->
+              <div class="mgmt-preview-col">
+                <div class="mgmt-section-title"><i class="fas fa-eye"></i> What happens next</div>
+                <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px;">
+                  <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,.15);color:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px;">1</div>
+                    <div>
+                      <div style="font-size:13px;font-weight:700;">Tanker is created in Firebase</div>
+                      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Saved under <code>/tankers/{TankerID}</code> with status ACTIVE</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,.15);color:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px;">2</div>
+                    <div>
+                      <div style="font-size:13px;font-weight:700;">Compartments are configured</div>
+                      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">N compartment slots are created, ready for lock pairing</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <div style="width:28px;height:28px;border-radius:50%;background:rgba(59,130,246,.15);color:#3b82f6;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px;">3</div>
+                    <div>
+                      <div style="font-size:13px;font-weight:700;">Go to Pairing to assign locks</div>
+                      <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Head to the Pairing page to attach E-Locks to each compartment</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB: ADD E-LOCK ── -->
+        <div id="tab-lock" class="mgmt-pane">
+          <div class="mgmt-full-panel">
+            <div class="panel-header">
+              <div class="panel-icon amber"><i class="fas fa-lock"></i></div>
+              <h5>Add E-Lock</h5>
+            </div>
+            <div class="mgmt-full-body">
+
+              <!-- Form -->
+              <div class="mgmt-form-col">
+                <div class="mgmt-section-title"><i class="fas fa-pen"></i> Lock Details</div>
+
+                <label class="field-label">Lock ID</label>
+                <input id="newLockId" class="vd-input mb-3" placeholder="e.g. LOCK-001">
+
+                <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 14px;margin-bottom:20px;">
+                  <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:4px;"><i class="fas fa-circle-info"></i> Note</div>
+                  <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">The Lock ID must match the hardware device ID flashed on the E-Lock. This is used to pair the physical lock to a compartment.</div>
+                </div>
+
+                <button class="vd-btn vd-btn-amber w-100" onclick="addLock()">
+                  <i class="fas fa-plus"></i> Register Lock
+                </button>
+              </div>
+
+              <!-- Preview / status -->
+              <div class="mgmt-preview-col">
+                <div class="mgmt-section-title"><i class="fas fa-satellite-dish"></i> Lock Lifecycle</div>
+                <div style="display:flex;flex-direction:column;gap:0;">
+
+                  <div style="display:flex;gap:12px;padding-bottom:16px;position:relative;">
+                    <div style="display:flex;flex-direction:column;align-items:center;width:24px;flex-shrink:0;">
+                      <div style="width:22px;height:22px;border-radius:50%;background:rgba(245,158,11,.15);color:#f59e0b;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #f59e0b;">1</div>
+                      <div style="width:2px;flex:1;background:var(--border);margin-top:4px;"></div>
+                    </div>
+                    <div style="padding-top:2px;"><div style="font-size:12px;font-weight:700;">AVAILABLE</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Lock is registered and ready to be paired</div></div>
+                  </div>
+
+                  <div style="display:flex;gap:12px;padding-bottom:16px;position:relative;">
+                    <div style="display:flex;flex-direction:column;align-items:center;width:24px;flex-shrink:0;">
+                      <div style="width:22px;height:22px;border-radius:50%;background:rgba(90,160,240,.15);color:#5aa0f0;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #5aa0f0;">2</div>
+                      <div style="width:2px;flex:1;background:var(--border);margin-top:4px;"></div>
+                    </div>
+                    <div style="padding-top:2px;"><div style="font-size:12px;font-weight:700;">ASSIGNED</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Paired to a tanker compartment with destination</div></div>
+                  </div>
+
+                  <div style="display:flex;gap:12px;padding-bottom:16px;position:relative;">
+                    <div style="display:flex;flex-direction:column;align-items:center;width:24px;flex-shrink:0;">
+                      <div style="width:22px;height:22px;border-radius:50%;background:rgba(239,68,68,.12);color:#ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #ef4444;">3</div>
+                      <div style="width:2px;flex:1;background:var(--border);margin-top:4px;"></div>
+                    </div>
+                    <div style="padding-top:2px;"><div style="font-size:12px;font-weight:700;">LOCKED</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Auth key generated, physically locked on tanker</div></div>
+                  </div>
+
+                  <div style="display:flex;gap:12px;">
+                    <div style="display:flex;flex-direction:column;align-items:center;width:24px;flex-shrink:0;">
+                      <div style="width:22px;height:22px;border-radius:50%;background:rgba(34,197,94,.12);color:#22c55e;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #22c55e;">4</div>
+                    </div>
+                    <div style="padding-top:2px;"><div style="font-size:12px;font-weight:700;">UNLOCKED</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Delivered at destination, ready for reset or re-pair</div></div>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB: ADD DESTINATION ── -->
+        <div id="tab-dest" class="mgmt-pane">
+          <div class="mgmt-full-panel">
+            <div class="panel-header">
+              <div class="panel-icon green"><i class="fas fa-location-dot"></i></div>
+              <h5>Add Destination / Depot</h5>
+            </div>
+            <div class="mgmt-full-body" style="grid-template-columns:360px 1fr;">
+
+              <!-- Form -->
+              <div class="mgmt-form-col">
+                <div class="mgmt-section-title"><i class="fas fa-pen"></i> Location Details</div>
+
+                <label class="field-label">Location Name</label>
+                <input id="newDestName" class="vd-input mb-3" placeholder="e.g. Bangalore Central Depot">
+
+                <label class="field-label">Location Type</label>
+                <select id="newDestType" class="vd-select mb-3">
+                  <option value="DEPOT">DEPOT</option>
+                  <option value="PORT">PORT</option>
+                  <option value="HUB">HUB</option>
+                  <option value="TERMINAL">TERMINAL</option>
+                  <option value="DELIVERY">DELIVERY</option>
+                </select>
+
+                <label class="field-label">Geofence Radius (meters)</label>
+                <input id="newDestRadius" type="number" class="vd-input mb-3" value="15">
+
+                <div class="mgmt-section-title" style="margin-top:8px;"><i class="fas fa-crosshairs"></i> Coordinates</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+                  <div>
+                    <label class="field-label">Latitude</label>
+                    <input id="destLat" class="vd-input" readonly placeholder="—">
+                  </div>
+                  <div>
+                    <label class="field-label">Longitude</label>
+                    <input id="destLng" class="vd-input" readonly placeholder="—">
+                  </div>
+                </div>
+
+                <button class="vd-btn vd-btn-green w-100" onclick="addDestination()">
+                  <i class="fas fa-plus"></i> Save Location
+                </button>
+              </div>
+
+              <!-- Map side -->
+              <div class="mgmt-preview-col" style="display:flex;flex-direction:column;gap:10px;">
+                <div class="mgmt-section-title"><i class="fas fa-map"></i> Pick on Map</div>
+
+                <div style="display:flex;gap:8px;margin-bottom:4px;">
+                  <input id="placeSearchInput" class="vd-input" placeholder="Search location..." style="flex:1;">
+                  <button class="vd-btn vd-btn-cyan" onclick="searchPlace()" style="padding:0 14px;">
+                    <i class="fas fa-search"></i>
+                  </button>
+                  <button class="vd-btn vd-btn-primary" onclick="gotoCurrentLocation()" style="padding:0 14px;" title="My location">
+                    <i class="fas fa-location-crosshairs"></i>
+                  </button>
+                </div>
+
+                <div id="destinationMap"></div>
+
+                <div style="font-size:11px;color:var(--text-muted);text-align:center;">
+                  <i class="fas fa-hand-pointer"></i> Click anywhere on the map to set the destination pin
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TAB: FLEET OVERVIEW ── -->
+        <div id="tab-overview" class="mgmt-pane">
+          <div class="mgmt-full-panel">
+            <div class="panel-header" style="justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div class="panel-icon purple"><i class="fas fa-table-list"></i></div>
+                <h5 style="margin:0;">Fleet Overview</h5>
+              </div>
+              <button class="vd-btn vd-btn-sm" onclick="loadFleetData()" style="font-size:11px;padding:5px 12px;">
+                <i class="fas fa-rotate"></i> Refresh
+              </button>
+            </div>
+            <div class="mgmt-overview-body">
+              <div id="fleetTable" class="fleet-table-wrap"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /management page -->
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /dashboard -->
+
+<!-- ── Admin Verify Modal ── -->
+<div id="adminVerifyModal" class="modal fade" tabindex="-1" style="background:rgba(0,0,0,0.7);">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#1e2937;color:#e2e8f0;border:1px solid #334155;">
+      <div class="modal-header" style="border-bottom:1px solid #334155;">
+        <h5 class="modal-title"><i class="fas fa-shield-alt text-warning me-2"></i> Admin Verification Required</h5>
+        <button type="button" class="btn-close btn-close-white" onclick="closeVerifyModal()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-4">For security reasons, please enter your password to proceed.</p>
+        <input type="password" id="verifyPasswordInput" class="form-control"
+          style="background:#0f172a;border:1px solid #475569;color:#e2e8f0;"
+          placeholder="Enter your password" autocomplete="current-password"
+          onkeypress="if(event.key==='Enter') confirmAdminVerify()">
+        <div id="verifyErrorMsg" class="text-danger small mt-2" style="display:none;"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid #334155;">
+        <button type="button" class="btn btn-secondary" onclick="closeVerifyModal()" style="background:#334155;border:none;">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="confirmAdminVerify()"><i class="fas fa-check-circle"></i> Verify Identity</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<!-- SCRIPTS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<script src="script.js"></script>
+<script src="tanker.js"></script>
+<script src="pairing.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  // ── Fleet Management Tab Switcher ──
+  function switchMgmtTab(paneId, btn) {
+    // deactivate all tabs + panes
+    document.querySelectorAll(".mgmt-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".mgmt-pane").forEach(p => p.classList.remove("active"));
+    // activate clicked
+    btn.classList.add("active");
+    document.getElementById(paneId).classList.add("active");
+    // init map when destination tab is opened
+    if (paneId === "tab-dest") {
+      setTimeout(() => { if (typeof initDestinationMap === "function") initDestinationMap(); }, 150);
+    }
+    // refresh fleet table when overview tab is opened
+    if (paneId === "tab-overview") {
+      if (typeof loadFleetData === "function") loadFleetData();
+    }
+  }
+</script>
+</body>
+</html>
