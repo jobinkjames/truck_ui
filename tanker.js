@@ -869,7 +869,7 @@ async function manualUnlock(tankerId, compId, lockId) {
     const gps     = gpsSnap.val();
 
     await db.ref(`locks/${lockId}`).update({
-      status:     "UNLOCK",      // ESP32 watches for "UNLOCK" to open relay
+      status:     "UNLOCKED",      // ESP32 watches for "UNLOCK" to open relay
       unlockedBy: currentUser?.email || "ADMIN"
     });
     await db.ref(`locks/${lockId}/authKey`).remove();
